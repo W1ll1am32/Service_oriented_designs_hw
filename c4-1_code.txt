@@ -1,0 +1,12 @@
+@startuml
+!include <C4/C4_Container>
+
+AddRelTag("maybe", $lineStyle = DashedLine())
+
+Person(user, "Пользователь")
+System(page, "Личная страница")
+System(system, "Лента постов")
+
+Rel(user, page, "Просмотр своих постов", "Видно комментарии, лайки, просмотры")
+Rel_R(user, system, "Просмотр постов других пользователей", "Можно комментировать и ставить лайки", $tags=maybe)
+@enduml
