@@ -1,0 +1,24 @@
+@startuml
+!include <C4/C4_Container>
+
+AddRelTag("maybe", $lineStyle = DashedLine())
+
+Person(user, "Пользователь")
+Container(api, "API", "Регистрация и аутентификация")
+Container(stats, "stats_backend", "Подсчёт лайков и просмотров")
+Container(posts, "posts_backend", "Посты с комментариями")
+ContainerDb(usersdb, "users", "Postgres", "пользователи")
+ContainerDb(statsdb, "stats", "Clickhouse", "лайки и просмотры")
+ContainerDb(postsdb, "posts", "Postgres", "посты")
+ContainerDb(commentsdb, "comments", "Postgres", "комменты")
+
+Rel(user, api, "REST")
+Rel(api, usersdb, "Работа с аккаунтами")
+Rel(stats, statsdb, "")
+Rel(posts, postsdb, "")
+Rel(posts, commentsdb, "")
+Rel_R(api, stats, "gRPC")
+Rel_R(api, posts, "gRPC")
+Rel_L(stats, posts, "gRPC")
+
+@enduml
