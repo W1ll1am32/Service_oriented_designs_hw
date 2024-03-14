@@ -1,0 +1,58 @@
+version: "3"
+
+services:
+  postgresql:
+    container_name: "sn-postgresql"
+    image: postgres:15.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: users
+    ports:
+      - "5432:5432"
+    networks:
+      - soc_network
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:6.20
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: root
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "5050:80"
+    networks:
+      - soc_network
+
+  migrations:
+    image: liquibase/liquibase:4.19.0
+    volumes:
+      - ./migrations:/app
+    command: --defaultsFile=/app/dev.properties update
+    networks:
+      - soc_network
+    depends_on:
+      - postgresql
+
+  fastapi:
+    container_name: "sn-fastapi"
+    build:
+      context: .
+      dockerfile: ./src/Dockerfile
+    environment:
+      DB_URL: postgresql+asyncpg://postgres:postgres@sn-postgresql:5432/users
+    ports:
+      - "8000:8000"
+    depends_on:
+      - migrations
+    networks:
+      - soc_network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+networks:
+  soc_network:
+    name: "soc_network"
