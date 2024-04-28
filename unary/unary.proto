@@ -5,7 +5,7 @@ package unary;
 service Unary{
  rpc create_post(Create) returns (MessageResponse) {}
  rpc update_post(Update) returns (MessageResponse) {}
- rpc delete_post(Get) returns (MessageResponse) {}
+ rpc delete_post(Delete) returns (MessageResponse) {}
  rpc get_post(Get) returns (PostResponse) {}
  rpc get_posts(GetAll) returns (PostsResponse) {}
 }
@@ -25,9 +25,13 @@ message Update{
  string text = 3;
 }
 
-message Get{
+message Delete{
  string user = 1;
  int32 id = 2;
+}
+
+message Get{
+ int32 id = 1;
 }
 
 message GetAll{
@@ -36,6 +40,7 @@ message GetAll{
 
 message PostResponse{
  string message = 1;
+ string user = 2;
 }
 
 message Posts{
