@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0bunary.proto\x12\x05unary\"$\n\x06\x43reate\x12\x0c\n\x04user\x18\x01 \x01(\t\x12\x0c\n\x04text\x18\x02 \x01(\t\"\"\n\x0fMessageResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"0\n\x06Update\x12\x0c\n\x04user\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\x05\x12\x0c\n\x04text\x18\x03 \x01(\t\"\x1f\n\x03Get\x12\x0c\n\x04user\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\x05\"\x16\n\x06GetAll\x12\x0c\n\x04user\x18\x01 \x01(\t\"\x1f\n\x0cPostResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"!\n\x05Posts\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04text\x18\x02 \x01(\t\",\n\rPostsResponse\x12\x1b\n\x05posts\x18\x01 \x03(\x0b\x32\x0c.unary.Posts2\x8f\x02\n\x05Unary\x12\x36\n\x0b\x63reate_post\x12\r.unary.Create\x1a\x16.unary.MessageResponse\"\x00\x12\x36\n\x0bupdate_post\x12\r.unary.Update\x1a\x16.unary.MessageResponse\"\x00\x12\x33\n\x0b\x64\x65lete_post\x12\n.unary.Get\x1a\x16.unary.MessageResponse\"\x00\x12-\n\x08get_post\x12\n.unary.Get\x1a\x13.unary.PostResponse\"\x00\x12\x32\n\tget_posts\x12\r.unary.GetAll\x1a\x14.unary.PostsResponse\"\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0bunary.proto\x12\x05unary\"$\n\x06\x43reate\x12\x0c\n\x04user\x18\x01 \x01(\t\x12\x0c\n\x04text\x18\x02 \x01(\t\"\"\n\x0fMessageResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"0\n\x06Update\x12\x0c\n\x04user\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\x05\x12\x0c\n\x04text\x18\x03 \x01(\t\"\"\n\x06\x44\x65lete\x12\x0c\n\x04user\x18\x01 \x01(\t\x12\n\n\x02id\x18\x02 \x01(\x05\"\x11\n\x03Get\x12\n\n\x02id\x18\x01 \x01(\x05\"\x16\n\x06GetAll\x12\x0c\n\x04user\x18\x01 \x01(\t\"-\n\x0cPostResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0c\n\x04user\x18\x02 \x01(\t\"!\n\x05Posts\x12\n\n\x02id\x18\x01 \x01(\x05\x12\x0c\n\x04text\x18\x02 \x01(\t\",\n\rPostsResponse\x12\x1b\n\x05posts\x18\x01 \x03(\x0b\x32\x0c.unary.Posts2\x92\x02\n\x05Unary\x12\x36\n\x0b\x63reate_post\x12\r.unary.Create\x1a\x16.unary.MessageResponse\"\x00\x12\x36\n\x0bupdate_post\x12\r.unary.Update\x1a\x16.unary.MessageResponse\"\x00\x12\x36\n\x0b\x64\x65lete_post\x12\r.unary.Delete\x1a\x16.unary.MessageResponse\"\x00\x12-\n\x08get_post\x12\n.unary.Get\x1a\x13.unary.PostResponse\"\x00\x12\x32\n\tget_posts\x12\r.unary.GetAll\x1a\x14.unary.PostsResponse\"\x00\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -27,16 +27,18 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _globals['_MESSAGERESPONSE']._serialized_end=94
   _globals['_UPDATE']._serialized_start=96
   _globals['_UPDATE']._serialized_end=144
-  _globals['_GET']._serialized_start=146
-  _globals['_GET']._serialized_end=177
-  _globals['_GETALL']._serialized_start=179
-  _globals['_GETALL']._serialized_end=201
-  _globals['_POSTRESPONSE']._serialized_start=203
-  _globals['_POSTRESPONSE']._serialized_end=234
-  _globals['_POSTS']._serialized_start=236
-  _globals['_POSTS']._serialized_end=269
-  _globals['_POSTSRESPONSE']._serialized_start=271
-  _globals['_POSTSRESPONSE']._serialized_end=315
-  _globals['_UNARY']._serialized_start=318
-  _globals['_UNARY']._serialized_end=589
+  _globals['_DELETE']._serialized_start=146
+  _globals['_DELETE']._serialized_end=180
+  _globals['_GET']._serialized_start=182
+  _globals['_GET']._serialized_end=199
+  _globals['_GETALL']._serialized_start=201
+  _globals['_GETALL']._serialized_end=223
+  _globals['_POSTRESPONSE']._serialized_start=225
+  _globals['_POSTRESPONSE']._serialized_end=270
+  _globals['_POSTS']._serialized_start=272
+  _globals['_POSTS']._serialized_end=305
+  _globals['_POSTSRESPONSE']._serialized_start=307
+  _globals['_POSTSRESPONSE']._serialized_end=351
+  _globals['_UNARY']._serialized_start=354
+  _globals['_UNARY']._serialized_end=628
 # @@protoc_insertion_point(module_scope)

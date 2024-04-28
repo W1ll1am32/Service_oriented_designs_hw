@@ -29,6 +29,66 @@ services:
     networks:
       - soc_network
 
+  kafka:
+    container_name: "fintech-kafka"
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: fintech-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      KAFKA_JMX_PORT: 9997
+    ports:
+      - "9092:9092"
+    networks:
+      - soc_network
+
+  kafka-ui:
+      container_name: "sn-kafka-ui"
+      image: provectuslabs/kafka-ui
+      restart: unless-stopped
+      depends_on:
+        - kafka
+      environment:
+        KAFKA_CLUSTERS_0_NAME: 'local'
+        KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: 'kafka:29092'
+        KAFKA_CLUSTERS_0_METRICS_PORT: 9997
+        DYNAMIC_CONFIG_ENABLED: 'true'
+      ports:
+        - "8081:8080"
+      networks:
+        - soc_network
+
+  init-kafka:
+      container_name: "sn-init-kafka"
+      image: confluentinc/cp-kafka:7.6.0
+      depends_on:
+        - kafka
+      networks:
+        - soc_network
+      entrypoint: [ "/bin/sh", "-c" ]
+      command: |
+        "
+        # blocks until kafka is reachable
+        kafka-topics --bootstrap-server kafka:29092 --list
+
+        echo -e 'Creating kafka topics'
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic new-agreements --replication-factor 1 --partitions 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic scoring-request --replication-factor 1 --partitions 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic scoring-response --replication-factor 1 --partitions 1
+
+        echo -e 'Successfully created the following topics:'
+        kafka-topics --bootstrap-server kafka:29092 --list
+        "
+
   migrations-fastapi:
     image: liquibase/liquibase:4.19.0
     volumes:
@@ -59,7 +119,10 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - migrations-fastapi
+      migrations-fastapi:
+        condition: service_completed_successfully
+      init-kafka:
+        condition: service_completed_successfully
     networks:
       - soc_network
     command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
@@ -76,13 +139,35 @@ services:
     ports:
       - "50051:50051"
     depends_on:
-      - migrations-grpc
+      migrations-grpc:
+        condition: service_completed_successfully
+      init-kafka:
+        condition: service_completed_successfully
     networks:
       - soc_network
     command: python3 /code/main.py
     volumes:
       - ./unary:/code/unary
       - ./posts/src:/code/
+
+  clickhouse:
+    container_name: "sn-clickhouse"
+    build:
+      context: .
+      dockerfile: statistics/src/Dockerfile
+    environment:
+      DB_URL: clickhouse+asynch://clickhouse:@localhost/clickhouse
+    ports:
+      - "8001:8001"
+    depends_on:
+      init-kafka:
+        condition: service_completed_successfully
+    networks:
+      - soc_network
+    command: python3 /code/main.py
+    volumes:
+      - ./statistics/src:/code/
+
 
 networks:
   soc_network:

@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from . import unary_pb2 as unary__pb2
+import unary_pb2 as unary__pb2
 
 
 class UnaryStub(object):
@@ -26,7 +26,7 @@ class UnaryStub(object):
                 )
         self.delete_post = channel.unary_unary(
                 '/unary.Unary/delete_post',
-                request_serializer=unary__pb2.Get.SerializeToString,
+                request_serializer=unary__pb2.Delete.SerializeToString,
                 response_deserializer=unary__pb2.MessageResponse.FromString,
                 )
         self.get_post = channel.unary_unary(
@@ -89,7 +89,7 @@ def add_UnaryServicer_to_server(servicer, server):
             ),
             'delete_post': grpc.unary_unary_rpc_method_handler(
                     servicer.delete_post,
-                    request_deserializer=unary__pb2.Get.FromString,
+                    request_deserializer=unary__pb2.Delete.FromString,
                     response_serializer=unary__pb2.MessageResponse.SerializeToString,
             ),
             'get_post': grpc.unary_unary_rpc_method_handler(
@@ -158,7 +158,7 @@ class Unary(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/unary.Unary/delete_post',
-            unary__pb2.Get.SerializeToString,
+            unary__pb2.Delete.SerializeToString,
             unary__pb2.MessageResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

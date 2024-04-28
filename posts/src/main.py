@@ -84,14 +84,10 @@ class UnaryService(pb2_grpc.UnaryServicer):
 
     async def get_post(self, request, context):
         a_session = await get_session()
-        user = request.user
         id = request.id
         result = await a_session.execute(select(Post).where(Post.id == id))
         post = result.scalars().one_or_none()
         if post is not None:
-            if user != post.user:
-                result = {'message': "Access denied"}
-                return pb2.MessageResponse(**result)
             result = {'message': post.text}
             return pb2.PostResponse(**result)
         else:
