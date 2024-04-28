@@ -30,9 +30,9 @@ services:
       - soc_network
 
   kafka:
-    container_name: "fintech-kafka"
+    container_name: "sn-kafka"
     image: confluentinc/cp-kafka:7.6.0
-    hostname: fintech-kafka
+    hostname: sn-kafka
     restart: unless-stopped
     environment:
       KAFKA_NODE_ID: 1
