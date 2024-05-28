@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package unarystats;
+
+service UnaryStats{
+ rpc get_post_stats(Post) returns (MessageResponse) {}
+ rpc get_post_top_likes(Empty) returns (TopPostResponse) {}
+ rpc get_post_top_views(Empty) returns (TopPostResponse) {}
+ rpc get_user_top(Empty) returns (TopUserResponse) {}
+}
+
+message Empty{}
+
+message Post{
+ int32 id = 1;
+}
+
+message MessageResponse{
+ string message = 1;
+}
+
+message TopPost{
+ int32 id = 1;
+ string author = 2;
+ int32 count = 3;
+}
+
+message TopPostResponse{
+ repeated TopPost top = 1;
+}
+
+message TopUser{
+ string author = 1;
+ int32 count = 2;
+}
+
+message TopUserResponse{
+ repeated TopUser top = 1;
+}
