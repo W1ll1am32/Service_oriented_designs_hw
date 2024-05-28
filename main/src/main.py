@@ -1,25 +1,27 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from passlib.context import CryptContext
-from typing import Optional
-from sqlalchemy import Column, String, Integer
+from typing import Optional, Any, List
+from sqlalchemy import Column, String, Integer, select
 from os import environ
-from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from pydantic import BaseModel
 from fastapi_pagination import Page, add_pagination, paginate
+from unary.posts import unaryposts_pb2_grpc as posts_pb2_grpc
+from unary.posts import unaryposts_pb2 as posts_pb2
+from unary.stats import unarystats_pb2_grpc as stats_pb2_grpc
+from unary.stats import unarystats_pb2 as stats_pb2
+from google.protobuf.json_format import MessageToDict
+from aiokafka import AIOKafkaProducer
 import jwt
 import grpc
 import asyncio
 import json
-from unary import unary_pb2_grpc as pb2_grpc
-from unary import unary_pb2 as pb2
-from google.protobuf.json_format import MessageToDict
-from aiokafka import AIOKafkaProducer
 
 tags = [
     {
@@ -27,12 +29,35 @@ tags = [
         "description": "Operations with user profile"
     },
     {
+        "name": "users",
+        "description": "Operations allowed to all users"
+    },
+    {
         "name": "admin",
         "description": "Admin operations"
+    },
+    {
+        "name": "post",
+        "description": "Operations with user posts"
+    },
+    {
+        "name": "stats",
+        "description": "Operations with stats"
+    },
+    {
+        "name": "top",
+        "description": "Operations with tops"
     }
 ]
 
-app = FastAPI(openapi_tags=tags)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await producer.start()
+    yield
+    await producer.stop()
+
+app = FastAPI(openapi_tags=tags, lifespan=lifespan)
 Base = declarative_base()
 DATABASE_URL = environ.get('DB_URL')
 engine = create_async_engine(DATABASE_URL)
@@ -117,7 +142,7 @@ class PostModel(BaseModel):
     text: str
 
 
-class UnaryClient(object):
+class UnaryPostsClient(object):
     """
     Client for gRPC functionality
     """
@@ -130,36 +155,77 @@ class UnaryClient(object):
             '{}:{}'.format(self.host, self.server_port))
 
         # bind the client and the server
-        self.stub = pb2_grpc.UnaryStub(self.channel)
+        self.stub = posts_pb2_grpc.UnaryPostsStub(self.channel)
 
     async def create_post(self, user, text):
-        request = pb2.Create(user=user, text=text)
+        request = posts_pb2.Create(user=user, text=text)
         res = self.stub.create_post(request)
         return res
 
     async def update_post(self, user, id, text):
-        request = pb2.Update(user=user, id=id, text=text)
+        request = posts_pb2.Update(user=user, id=id, text=text)
         res = self.stub.update_post(request)
         return res
 
     async def delete_post(self, user, id):
-        request = pb2.Get(user=user, id=id)
+        request = posts_pb2.Get(user=user, id=id)
         res = self.stub.delete_post(request)
         return res
 
     async def get_post(self, id):
-        request = pb2.Get(id=id)
+        request = posts_pb2.Get(id=id)
         res = self.stub.get_post(request)
         return res
 
     async def get_posts(self, user):
-        request = pb2.GetAll(user=user)
+        request = posts_pb2.GetAll(user=user)
         res = self.stub.get_posts(request)
         return res
 
 
-async def get_client() -> UnaryClient:
-    client = UnaryClient()
+async def get_posts_client() -> UnaryPostsClient:
+    client = UnaryPostsClient()
+    yield client
+
+
+class UnaryStatsClient(object):
+    """
+    Client for gRPC functionality
+    """
+    def __init__(self):
+        self.host = 'stats'
+        self.server_port = 50052
+
+        # instantiate a channel
+        self.channel = grpc.insecure_channel(
+            '{}:{}'.format(self.host, self.server_port))
+
+        # bind the client and the server
+        self.stub = stats_pb2_grpc.UnaryStatsStub(self.channel)
+
+    async def get_post_stats(self, id):
+        request = stats_pb2.Post(id=id)
+        res = self.stub.get_post_stats(request)
+        return res
+
+    async def get_post_top_likes(self):
+        request = stats_pb2.Empty()
+        res = self.stub.get_post_top_likes(request)
+        return res
+
+    async def get_post_top_views(self):
+        request = stats_pb2.Empty()
+        res = self.stub.get_post_top_views(request)
+        return res
+
+    async def get_user_top(self):
+        request = stats_pb2.Empty()
+        res = self.stub.get_user_top(request)
+        return res
+
+
+async def get_stats_client() -> UnaryStatsClient:
+    client = UnaryStatsClient()
     yield client
 
 
@@ -203,7 +269,7 @@ async def get_users(a_session: AsyncSession = Depends(get_session)) -> list[User
 
 
 @app.get('/user/profile', tags=["user"])
-async def get_user(token: str = Depends(oauth2), a_session: AsyncSession = Depends(get_session)) -> UserModel | JSONResponse:
+async def get_user(token: str = Depends(oauth2), a_session: AsyncSession = Depends(get_session)):
     try:
         user = await get_by_username(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username'])
         if user:
@@ -237,48 +303,51 @@ async def update_user(data: UpdateModel, token: str = Depends(oauth2), a_session
 
 
 @app.post('/user/post', tags=["post"])
-async def create_post(data: PostModel, token: str = Depends(oauth2), grpc_client: UnaryClient = Depends(get_client)) -> JSONResponse:
-    result = await grpc_client.create_post(user=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username'], text=data.text)
+async def create_post(text: str, token: str = Depends(oauth2), grpc_client: UnaryPostsClient = Depends(get_posts_client)) -> JSONResponse:
+    result = await grpc_client.create_post(user=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username'], text=text)
     return JSONResponse(content={'message': MessageToDict(result)['message']}, status_code=200)
 
 
 @app.post('/user/post/{id}', tags=["post"])
-async def update_post(id: int, data: PostModel, token: str = Depends(oauth2), grpc_client: UnaryClient = Depends(get_client)) -> JSONResponse:
+async def update_post(id: int, data: PostModel, token: str = Depends(oauth2), grpc_client: UnaryPostsClient = Depends(get_posts_client)) -> JSONResponse:
     result = await grpc_client.update_post(user=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username'], id=id, text=data.text)
     return JSONResponse(content={'message': MessageToDict(result)['message']}, status_code=200)
 
 
 @app.delete('/user/post/{id}', tags=["post"])
-async def delete_post(id: int, token: str = Depends(oauth2), grpc_client: UnaryClient = Depends(get_client)) -> JSONResponse:
+async def delete_post(id: int, token: str = Depends(oauth2), grpc_client: UnaryPostsClient = Depends(get_posts_client)) -> JSONResponse:
     result = await grpc_client.delete_post(user=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username'], id=id)
     return JSONResponse(content={'message': MessageToDict(result)['message']}, status_code=200)
 
 
 @app.get('/users/like/{post_id}', tags=["users"])
-async def like_post(post_id: int, token: str = Depends(oauth2), grpc_client: UnaryClient = Depends(get_client), a_session: AsyncSession = Depends(get_session)) -> JSONResponse:
-    if get_user(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username']):
+async def like_post(post_id: int, token: str = Depends(oauth2), grpc_client: UnaryPostsClient = Depends(get_posts_client),
+                    a_session: AsyncSession = Depends(get_session), prod: AIOKafkaProducer = Depends(get_producer)) -> JSONResponse:
+    if await get_by_username(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username']):
         result = await grpc_client.get_post(id=post_id)
         message = MessageToDict(result)['message']
         if message != "Post not exists":
-            await producer.send("statistics", json.dumps({"post_id": post_id,
+            await prod.send("statistics", json.dumps({"post_id": post_id,
                                                           "user": jwt.decode(token, jwt_secret,
                                                                              algorithms=jwt_algorithm)['username'],
                                                           "action": 'LIKED',
                                                           "author": MessageToDict(result)['user']}).encode("ascii"))
-        return JSONResponse(content={'message': 'post liked'}, status_code=200)
+            return JSONResponse(content={'message': 'post liked'}, status_code=200)
+        return JSONResponse(content={'message': message}, status_code=200)
     else:
         return JSONResponse(content={'message': 'user not found'}, status_code=404)
 
 
 @app.get('/users/post/{post_id}', tags=["users"])
-async def get_post(post_id: int, token: str = Depends(oauth2), grpc_client: UnaryClient = Depends(get_client), a_session: AsyncSession = Depends(get_session)) -> JSONResponse:
-    if get_user(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username']):
+async def get_post(post_id: int, token: str = Depends(oauth2), grpc_client: UnaryPostsClient = Depends(get_posts_client),
+                   a_session: AsyncSession = Depends(get_session), prod: AIOKafkaProducer = Depends(get_producer)) -> JSONResponse:
+    if await get_by_username(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username']):
         result = await grpc_client.get_post(id=post_id)
         message = MessageToDict(result)['message']
         if message != "Post not exists":
-            await producer.send("statistics", json.dumps({"post_id": post_id,
+            await prod.send("statistics", json.dumps({"post_id": post_id,
                                                           "user": jwt.decode(token, jwt_secret,
-                                                                             algorithms=jwt_algorithm)['username'],
+                                                                            algorithms=jwt_algorithm)['username'],
                                                           "action": 'WATCHED',
                                                           "author": MessageToDict(result)['user']}).encode("ascii"))
         return JSONResponse(content={'message': message}, status_code=200)
@@ -286,17 +355,60 @@ async def get_post(post_id: int, token: str = Depends(oauth2), grpc_client: Unar
         return JSONResponse(content={'message': 'user not found'}, status_code=404)
 
 
-@app.get('/users/posts/{username}', tags=["users"])
-async def get_posts(username: str, token: str = Depends(oauth2), grpc_client: UnaryClient = Depends(get_client), a_session: AsyncSession = Depends(get_session)) -> Page[PostModel] | JSONResponse:
-    if get_user(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username']):
+@app.get('/stats/post/{post_id}', tags=["stats"])
+async def get_post_stats(post_id: int, token: str = Depends(oauth2), grpc_client: UnaryStatsClient = Depends(get_stats_client),
+                         a_session: AsyncSession = Depends(get_session)) -> JSONResponse:
+    if await get_by_username(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username']):
+        result = await grpc_client.get_post_stats(id=post_id)
+        return JSONResponse(content={'message': MessageToDict(result)['message']}, status_code=200)
+    else:
+        return JSONResponse(content={'message': 'user not found'}, status_code=404)
+
+
+@app.get('/top/post/{action}', tags=["top"])
+async def get_post_top(action: str, token: str = Depends(oauth2), grpc_client: UnaryStatsClient = Depends(get_stats_client),
+                       a_session: AsyncSession = Depends(get_session)) -> List | Any:
+    if await get_by_username(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username']):
+        if action == 'likes':
+            result = await grpc_client.get_post_top_likes()
+        elif action == 'views':
+            result = await grpc_client.get_post_top_views()
+        else:
+            return JSONResponse(content={'message': 'action not valid'}, status_code=404)
+        if MessageToDict(result):
+            return MessageToDict(result)['top']
+        return JSONResponse(content={'message': 'action was not performed'}, status_code=404)
+    else:
+        return JSONResponse(content={'message': 'user not found'}, status_code=404)
+
+
+@app.get('/top/user', tags=["top"])
+async def get_user_top(token: str = Depends(oauth2), grpc_client: UnaryStatsClient = Depends(get_stats_client),
+                       a_session: AsyncSession = Depends(get_session)) -> List | Any:
+    if await get_by_username(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username']):
+        result = await grpc_client.get_user_top()
+        if MessageToDict(result):
+            return MessageToDict(result)['top']
+        return JSONResponse(content={'message': 'no one liked anybody'}, status_code=404)
+    else:
+        return JSONResponse(content={'message': 'user not found'}, status_code=404)
+
+
+@app.get('/users/posts/{username}', tags=["users"], response_model=Page[PostModel])
+async def get_posts(username: str, token: str = Depends(oauth2), grpc_client: UnaryPostsClient = Depends(get_posts_client),
+                    a_session: AsyncSession = Depends(get_session)):
+    if await get_by_username(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username']):
         result = await grpc_client.get_posts(user=username)
+        if not MessageToDict(result):
+            return JSONResponse(content={'message': 'No posts found'}, status_code=200)
         posts = MessageToDict(result)['posts']
-        return paginate(posts['posts'])
+        return paginate(posts)
     else:
         return JSONResponse(content={'message': 'user not found'}, status_code=404)
 
 
 add_pagination(app)
+
 
 """
 if __name__ == "__main__":

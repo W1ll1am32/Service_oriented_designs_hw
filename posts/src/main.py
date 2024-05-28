@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from grpc import aio
-from unary import unary_pb2_grpc as pb2_grpc
-from unary import unary_pb2 as pb2
+from unary.posts import unaryposts_pb2 as pb2, unaryposts_pb2_grpc as pb2_grpc
 import logging
 import asyncio
 
@@ -30,8 +29,7 @@ class Post(Base):
     text = Column(String, nullable=False)
 
 
-class UnaryService(pb2_grpc.UnaryServicer):
-
+class UnaryPostService(pb2_grpc.UnaryPostsServicer):
     def __init__(self, *args, **kwargs):
         pass
 
@@ -88,7 +86,7 @@ class UnaryService(pb2_grpc.UnaryServicer):
         result = await a_session.execute(select(Post).where(Post.id == id))
         post = result.scalars().one_or_none()
         if post is not None:
-            result = {'message': post.text}
+            result = {'message': post.text, 'user': post.user}
             return pb2.PostResponse(**result)
         else:
             result = {'message': "Post not exists"}
@@ -105,7 +103,7 @@ class UnaryService(pb2_grpc.UnaryServicer):
 
 async def serve():
     server = aio.server()
-    pb2_grpc.add_UnaryServicer_to_server(UnaryService(), server)
+    pb2_grpc.add_UnaryPostsServicer_to_server(UnaryPostService(), server)
     server.add_insecure_port('[::]:50051')
     await server.start()
     await server.wait_for_termination()
