@@ -1,5 +1,5 @@
 from unittest import IsolatedAsyncioTestCase
-from src.main import UnaryStatsService, start_connection
+from ..src.main import UnaryStatsService, start_connection
 from unary.stats import unarystats_pb2 as pb2
 
 

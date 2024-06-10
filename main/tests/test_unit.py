@@ -2,7 +2,7 @@ from unittest import IsolatedAsyncioTestCase
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, String, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.main import UserModel, get_session
+from ..src.main import UserModel, get_session
 
 
 class MainTestCase(IsolatedAsyncioTestCase):

@@ -1,5 +1,5 @@
 from unittest import IsolatedAsyncioTestCase
-from src.main import UnaryPostService, start_connection
+from ..src.main import UnaryPostService, start_connection
 from unary.posts import unaryposts_pb2 as pb2
 
 
