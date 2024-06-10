@@ -11,9 +11,17 @@ import logging
 import asyncio
 
 Base = declarative_base()
-DATABASE_URL = environ.get('DB_URL')
-engine = create_async_engine(DATABASE_URL)
-async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+async_session = None
+
+
+def start_connection():
+    global async_session
+    DATABASE_URL = environ.get('DB_URL')
+    try:
+        engine = create_async_engine(DATABASE_URL)
+    except:
+        engine = create_async_engine('postgresql+asyncpg://grpc:grpc@sn-postgresql:5432/grpc')
+    async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
 async def get_session() -> AsyncSession:
@@ -22,10 +30,10 @@ async def get_session() -> AsyncSession:
 
 
 class Post(Base):
-    __tablename__ = "users"
+    __tablename__ = "posts"
 
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
-    user = Column(String, nullable=False)
+    username = Column(String, nullable=False)
     text = Column(String, nullable=False)
 
 
@@ -37,10 +45,13 @@ class UnaryPostService(pb2_grpc.UnaryPostsServicer):
         a_session = await get_session()
         user = request.user
         text = request.text
-        new_post = Post(user=user, text=text)
-        a_session.add(new_post)
-        await a_session.commit()
-        result = {'message': "Post created"}
+        new_post = Post(username=user, text=text)
+        try:
+            a_session.add(new_post)
+            await a_session.commit()
+            result = {'message': "Post created"}
+        except:
+            result = {'message': "Error updating post"}
         return pb2.MessageResponse(**result)
 
     async def update_post(self, request, context):
@@ -48,28 +59,32 @@ class UnaryPostService(pb2_grpc.UnaryPostsServicer):
         user = request.user
         id = request.id
         text = request.text
-        result = await a_session.execute(select(Post).where(Post.id == id))
-        post = result.scalars().one_or_none()
-        if post is not None:
-            if user != post.user:
-                result = {'message': "Access denied"}
+        try:
+            result = await a_session.execute(select(Post).where(Post.id == id))
+            post = result.scalars().one_or_none()
+            if post is not None:
+                if user != post.username:
+                    result = {'message': "Access denied"}
+                    return pb2.MessageResponse(**result)
+                post.text = text
+                await a_session.commit()
+                result = {'message': "Post updated"}
                 return pb2.MessageResponse(**result)
-            post.text = text
-            await a_session.commit()
-            result = {'message': "Post updated"}
-            return pb2.MessageResponse(**result)
-        else:
-            result = {'message': "Post not exists"}
-            return pb2.MessageResponse(**result)
+            else:
+                result = {'message': "Post not exists"}
+                return pb2.MessageResponse(**result)
+        except:
+            result = {'message': "Error updating post"}
+        return pb2.MessageResponse(**result)
 
     async def delete_post(self, request, context):
         a_session = await get_session()
         user = request.user
         id = request.id
-        result = await async_session.execute(select(Post).where(Post.id == id))
+        result = await a_session.execute(select(Post).where(Post.id == id))
         post = result.scalars().one_or_none()
         if post is not None:
-            if user != post.user:
+            if user != post.username:
                 result = {'message': "Access denied"}
                 return pb2.MessageResponse(**result)
             await a_session.delete(post)
@@ -86,7 +101,7 @@ class UnaryPostService(pb2_grpc.UnaryPostsServicer):
         result = await a_session.execute(select(Post).where(Post.id == id))
         post = result.scalars().one_or_none()
         if post is not None:
-            result = {'message': post.text, 'user': post.user}
+            result = {'message': post.text, 'user': post.username}
             return pb2.PostResponse(**result)
         else:
             result = {'message': "Post not exists"}
@@ -95,7 +110,7 @@ class UnaryPostService(pb2_grpc.UnaryPostsServicer):
     async def get_posts(self, request, context):
         a_session = await get_session()
         user = request.user
-        result = await a_session.execute(select(Post).where(Post.user == user))
+        result = await a_session.execute(select(Post).where(Post.username == user))
         posts = result.scalars().all()
         result = {'posts': [{'id': p.id, 'text': p.text} for p in posts]}
         return pb2.PostsResponse(**result)
@@ -110,5 +125,6 @@ async def serve():
 
 
 if __name__ == '__main__':
+    start_connection()
     logging.basicConfig(level=logging.INFO)
     asyncio.run(serve())
