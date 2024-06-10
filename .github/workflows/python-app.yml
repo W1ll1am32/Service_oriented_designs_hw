@@ -21,6 +21,7 @@ jobs:
         python-version: "3.10"
     - name: Install dependencies
       run: |
+        cd $GITHUB_WORKSPACE
         python -m pip install --upgrade pip
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
@@ -32,4 +33,6 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
-        pytest
+        pytest main/tests/test_unit.py
+        pytest posts/tests/test_unit.py
+        pytest statistics/tests/test_unit.py
