@@ -15,7 +15,3 @@ class PostTestCase(IsolatedAsyncioTestCase):
         test = UnaryPostService()
         res = await test.update_post(pb2.Update(user="user", id=1, text="text"), None)
         self.assertIsInstance(res, pb2.MessageResponse)
-
-
-if __name__ == '__main__':
-    unittest.main()

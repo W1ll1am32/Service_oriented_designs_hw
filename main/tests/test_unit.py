@@ -39,7 +39,3 @@ class MainTestCase(IsolatedAsyncioTestCase):
     async def test_session_getter(self):
         async for ses in get_session():
             self.assertIsInstance(ses, AsyncSession)
-
-
-if __name__ == '__main__':
-    unittest.main()

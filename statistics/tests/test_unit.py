@@ -15,7 +15,3 @@ class StatTestCase(IsolatedAsyncioTestCase):
         test = UnaryStatsService()
         res = await test.get_user_top(pb2.Empty(), None)
         self.assertIsInstance(res, (pb2.MessageResponse, pb2.TopUserResponse))
-
-
-if __name__ == '__main__':
-    unittest.main()
