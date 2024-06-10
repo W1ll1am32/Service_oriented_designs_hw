@@ -14,12 +14,23 @@ from unary.stats import unarystats_pb2 as pb2, unarystats_pb2_grpc as pb2_grpc
 from grpc import aio
 
 loop = asyncio.get_event_loop()
-consumer = AIOKafkaConsumer("statistics", bootstrap_servers='kafka:29092', loop=loop)
+consumer = None
 
 Base = declarative_base()
-DATABASE_URL = environ.get('DB_URL')
-engine = create_async_engine(DATABASE_URL)
-async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+async_session = None
+
+
+def start_connection(lp=loop):
+    global async_session, consumer
+    DATABASE_URL = environ.get('DB_URL')
+    KAFKA = environ.get('KAFKA')
+    try:
+        consumer = AIOKafkaConsumer("statistics", bootstrap_servers=KAFKA, loop=lp)
+        engine = create_async_engine(DATABASE_URL)
+    except:
+        engine = create_async_engine('postgresql+asyncpg://stats:stats@sn-postgresql:5432/stats')
+        consumer = AIOKafkaConsumer("statistics", bootstrap_servers='kafka:29092', loop=lp)
+    async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
 async def get_session() -> AsyncSession:
@@ -32,14 +43,14 @@ class Statistics(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     post_id = Column(Integer, nullable=False)
-    user = Column(String, nullable=False)
+    username = Column(String, nullable=False)
     action = Column(String, nullable=False)
     author = Column(String, nullable=False)
 
 
 class StatsModel(BaseModel):
     post_id: int
-    user: str
+    username: str
     action: str
     author: str
 
@@ -47,7 +58,7 @@ class StatsModel(BaseModel):
     def from_dao(cls, dao):
         return StatsModel(
             post_id=dao.post_id,
-            user=dao.user,
+            username=dao.username,
             action=dao.action,
             author=dao.author
         )
@@ -60,23 +71,26 @@ class UnaryStatsService(pb2_grpc.UnaryStatsServicer):
     async def get_post_stats(self, request, context):
         a_session = await get_session()
         id = request.id
-        result = await a_session.execute(select(Statistics).where(Statistics.post_id == id))
-        stats = result.scalars().all()
-        if stats is not None:
-            likes = 0
-            views = 0
-            used_l = []
-            used_v = []
-            for s in stats:
-                if s.action == 'LIKED' and s.user not in used_l:
-                    likes += 1
-                    used_l.append(s.user)
-                elif s.action == 'WATCHED' and s.user not in used_v:
-                    views += 1
-                    used_v.append(s.user)
-            result = {'message': "Post id: {} Likes: {} Views: {}".format(id, likes, views)}
-        else:
-            result = {'message': "Post not exists"}
+        try:
+            result = await a_session.execute(select(Statistics).where(Statistics.post_id == id))
+            stats = result.scalars().all()
+            if stats:
+                likes = 0
+                views = 0
+                used_l = []
+                used_v = []
+                for s in stats:
+                    if s.action == 'LIKED' and s.username not in used_l:
+                        likes += 1
+                        used_l.append(s.username)
+                    elif s.action == 'WATCHED' and s.username not in used_v:
+                        views += 1
+                        used_v.append(s.username)
+                result = {'message': "Post id: {} Likes: {} Views: {}".format(id, likes, views)}
+            else:
+                result = {'message': "Post has no stats"}
+        except:
+            result = {'message': "Error getting posts"}
         return pb2.MessageResponse(**result)
 
     async def get_post_top_likes(self, request, context):
@@ -89,8 +103,8 @@ class UnaryStatsService(pb2_grpc.UnaryStatsServicer):
         for s in stats:
             if s.post_id not in used:
                 used[s.post_id] = set()
-            used[s.post_id].add(s.user)
-            author[s.post_id] = s.user
+            used[s.post_id].add(s.username)
+            author[s.post_id] = s.username
         for k in used:
             top[k] = len(used[k])
         i = 0
@@ -113,8 +127,8 @@ class UnaryStatsService(pb2_grpc.UnaryStatsServicer):
         for s in stats:
             if s.post_id not in used:
                 used[s.post_id] = set()
-            used[s.post_id].add(s.user)
-            author[s.post_id] = s.user
+            used[s.post_id].add(s.username)
+            author[s.post_id] = s.username
         for k in used:
             top[k] = len(used[k])
         i = 0
@@ -129,25 +143,29 @@ class UnaryStatsService(pb2_grpc.UnaryStatsServicer):
 
     async def get_user_top(self, request, context):
         a_session = await get_session()
-        result = await a_session.execute(select(Statistics).where(Statistics.action == 'LIKED'))
-        stats = result.scalars().all()
-        top = {}
-        used = {}
-        for s in stats:
-            if s.author not in used:
-                used[s.author] = set()
-            used[s.author].add(s.user)
-        for k in used:
-            top[k] = len(used[k])
-        i = 0
-        res = []
-        for k, v in sorted(top.items(), key=lambda item: item[1]):
-            if i == 3:
-                break
-            res.append({'author': k, 'count': v})
-            i += 1
-        result = {'top': res}
-        return pb2.TopUserResponse(**result)
+        try:
+            result = await a_session.execute(select(Statistics).where(Statistics.action == 'LIKED'))
+            stats = result.scalars().all()
+            top = {}
+            used = {}
+            for s in stats:
+                if s.author not in used:
+                    used[s.author] = set()
+                used[s.author].add(s.username)
+            for k in used:
+                top[k] = len(used[k])
+            i = 0
+            res = []
+            for k, v in sorted(top.items(), key=lambda item: item[1]):
+                if i == 3:
+                    break
+                res.append({'author': k, 'count': v})
+                i += 1
+            result = {'top': res}
+            return pb2.TopUserResponse(**result)
+        except:
+            result = {'message': "Error getting posts"}
+            return pb2.MessageResponse(**result)
 
 
 async def serve():
@@ -161,10 +179,16 @@ async def serve():
 async def consume():
     await consumer.start()
     session = await get_session()
+    # ПОЧЕМУ???
+    a = consumer.assignment()
+    t = await consumer.topics()
+    await consumer.seek_to_beginning()
+    # КАК???
     try:
+        # Вот до сюда доходит программа, но застревает на async for
         async for msg in consumer:
             data = json.loads(msg.value.decode("ascii"))
-            session.add(Statistics(post_id=data["post_id"], user=data["user"], action=data["action"], author=data["author"]))
+            session.add(Statistics(post_id=data["post_id"], username=data["username"], action=data["action"], author=data["author"]))
             await session.commit()
     finally:
         await consumer.stop()
@@ -172,6 +196,7 @@ async def consume():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    start_connection()
     logging.basicConfig(level=logging.INFO)
     asyncio.create_task(serve())
     asyncio.create_task(consume())
@@ -183,11 +208,11 @@ app = FastAPI(lifespan=lifespan)
 
 @app.post('/')
 async def ok():
-    return Response(200)
+    return Response(status_code=200)
 
 
 @app.get('/admin/stats')
-async def get_users(a_session: AsyncSession = Depends(get_session)) -> list[StatsModel]:
+async def get_stats(a_session: AsyncSession = Depends(get_session)) -> list[StatsModel]:
     result = await a_session.execute(select(Statistics))
     stats = result.scalars().all()
     return [StatsModel.from_dao(stat) for stat in stats]

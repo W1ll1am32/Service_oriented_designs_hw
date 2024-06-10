@@ -60,7 +60,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(openapi_tags=tags, lifespan=lifespan)
 Base = declarative_base()
 DATABASE_URL = environ.get('DB_URL')
-engine = create_async_engine(DATABASE_URL)
+try:
+    engine = create_async_engine(DATABASE_URL)
+except:
+    engine = create_async_engine("postgresql+asyncpg://fastapi:fastapi@sn-postgresql:5432/fastapi")
 async_session = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
@@ -328,7 +331,7 @@ async def like_post(post_id: int, token: str = Depends(oauth2), grpc_client: Una
         message = MessageToDict(result)['message']
         if message != "Post not exists":
             await prod.send("statistics", json.dumps({"post_id": post_id,
-                                                          "user": jwt.decode(token, jwt_secret,
+                                                          "username": jwt.decode(token, jwt_secret,
                                                                              algorithms=jwt_algorithm)['username'],
                                                           "action": 'LIKED',
                                                           "author": MessageToDict(result)['user']}).encode("ascii"))
@@ -346,7 +349,7 @@ async def get_post(post_id: int, token: str = Depends(oauth2), grpc_client: Unar
         message = MessageToDict(result)['message']
         if message != "Post not exists":
             await prod.send("statistics", json.dumps({"post_id": post_id,
-                                                          "user": jwt.decode(token, jwt_secret,
+                                                          "username": jwt.decode(token, jwt_secret,
                                                                             algorithms=jwt_algorithm)['username'],
                                                           "action": 'WATCHED',
                                                           "author": MessageToDict(result)['user']}).encode("ascii"))
@@ -400,7 +403,7 @@ async def get_posts(username: str, token: str = Depends(oauth2), grpc_client: Un
     if await get_by_username(session=a_session, username=jwt.decode(token, jwt_secret, algorithms=jwt_algorithm)['username']):
         result = await grpc_client.get_posts(user=username)
         if not MessageToDict(result):
-            return JSONResponse(content={'message': 'No posts found'}, status_code=200)
+            return JSONResponse(content={'message': 'No posts found'}, status_code=404)
         posts = MessageToDict(result)['posts']
         return paginate(posts)
     else:

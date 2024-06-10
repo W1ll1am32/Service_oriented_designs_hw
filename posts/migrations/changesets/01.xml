@@ -9,12 +9,12 @@
         http://www.liquibase.org/xml/ns/pro http://www.liquibase.org/xml/ns/pro/liquibase-pro-latest.xsd">
     
     <changeSet author="u.goncharenko" id="create-posts-table">
-        <createTable tableName="users">
+        <createTable tableName="posts">
             <column autoIncrement="true" name="id" type="INTEGER">
                 <constraints nullable="false" primaryKey="true" primaryKeyName="users_pkey"/>
             </column>
             
-            <column name="user" type="VARCHAR">
+            <column name="username" type="VARCHAR">
                 <constraints nullable="false"/>
             </column>
             
