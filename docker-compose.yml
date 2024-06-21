@@ -1,0 +1,196 @@
+version: "3"
+
+services:
+  postgresql:
+    container_name: "sn-postgresql"
+    image: postgres:15.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_MULTIPLE_DATABASES: fastapi, grpc, stats
+    ports:
+      - "5432:5432"
+    networks:
+      - soc_network
+    volumes:
+      - ./create-multiple-db-with-users.sh:/docker-entrypoint-initdb.d/create-multiple-db-with-users.sh:ro
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:6.20
+    restart: unless-stopped
+    entrypoint: >
+      /bin/sh -c "
+      cp -f /pgadmin4/pgpass /var/lib/pgadmin/;
+      chmod 600 /var/lib/pgadmin/pgpass;
+      /entrypoint.sh
+      "
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: root
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "8080:80"
+    networks:
+      - soc_network
+    volumes:
+      - ./database-dev/configs/servers.json:/pgadmin4/servers.json:ro
+      - ./database-dev/configs/pgpass:/pgadmin4/pgpass:ro
+
+  kafka:
+    container_name: "sn-kafka"
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: sn-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://sn-kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@sn-kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://sn-kafka:29092,CONTROLLER://sn-kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      KAFKA_JMX_PORT: 9997
+    ports:
+      - "9092:9092"
+    networks:
+      - soc_network
+
+  kafka-ui:
+      container_name: "sn-kafka-ui"
+      image: provectuslabs/kafka-ui
+      restart: unless-stopped
+      depends_on:
+        - kafka
+      environment:
+        KAFKA_CLUSTERS_0_NAME: 'local'
+        KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: 'sn-kafka:29092'
+        KAFKA_CLUSTERS_0_METRICS_PORT: 9997
+        DYNAMIC_CONFIG_ENABLED: 'true'
+      ports:
+        - "8081:8080"
+      networks:
+        - soc_network
+
+  init-kafka:
+      container_name: "sn-init-kafka"
+      image: confluentinc/cp-kafka:7.6.0
+      depends_on:
+        - kafka
+      entrypoint: [ "/bin/sh", "-c" ]
+      command: |
+        "
+        # blocks until kafka is reachable
+        kafka-topics --bootstrap-server sn-kafka:29092 --list
+
+        echo -e 'Creating kafka topics'
+        kafka-topics --bootstrap-server sn-kafka:29092 --create --if-not-exists --topic actions --replication-factor 1 --partitions 1
+
+        echo -e 'Successfully created the following topics:'
+        kafka-topics --bootstrap-server sn-kafka:29092 --list
+        "
+      networks:
+        - soc_network
+
+  migrations-fastapi:
+    image: liquibase/liquibase:4.19.0
+    volumes:
+      - ./main/migrations:/app
+    command: --defaultsFile=/app/dev.properties update
+    networks:
+      - soc_network
+    depends_on:
+      - postgresql
+
+  migrations-grpc:
+    image: liquibase/liquibase:4.19.0
+    volumes:
+      - ./posts/migrations:/app
+    command: --defaultsFile=/app/dev.properties update
+    networks:
+      - soc_network
+    depends_on:
+      - postgresql
+
+  migrations-stats:
+    image: liquibase/liquibase:4.19.0
+    volumes:
+      - ./statistics/migrations:/app
+    command: --defaultsFile=/app/dev.properties update
+    networks:
+      - soc_network
+    depends_on:
+      - postgresql
+
+  fastapi:
+    container_name: "sn-fastapi"
+    build:
+      context: .
+      dockerfile: main/src/Dockerfile
+    environment:
+      DB_URL: postgresql+asyncpg://fastapi:fastapi@sn-postgresql:5432/fastapi
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrations-fastapi:
+        condition: service_completed_successfully
+      init-kafka:
+        condition: service_completed_successfully
+    networks:
+      - soc_network
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    volumes:
+      - ./unary/posts:/code/unary/posts
+      - ./unary/stats:/code/unary/stats
+      - ./main/src:/code/
+  grpc:
+    container_name: "sn-grpc"
+    build:
+      context: .
+      dockerfile: posts/src/Dockerfile
+    environment:
+      DB_URL: postgresql+asyncpg://grpc:grpc@sn-postgresql:5432/grpc
+    ports:
+      - "50051:50051"
+    depends_on:
+      migrations-grpc:
+        condition: service_completed_successfully
+      init-kafka:
+        condition: service_completed_successfully
+    networks:
+      - soc_network
+    command: python3 /code/main.py
+    volumes:
+      - ./unary/posts:/code/unary/posts
+      - ./posts/src:/code/
+
+  stats:
+    container_name: "sn-stats"
+    build:
+      context: .
+      dockerfile: statistics/src/Dockerfile
+    environment:
+      DB_URL: postgresql+asyncpg://stats:stats@sn-postgresql:5432/stats
+    ports:
+      - "8001:8001"
+      - "50052:50052"
+    depends_on:
+      migrations-stats:
+        condition: service_completed_successfully
+      init-kafka:
+        condition: service_completed_successfully
+    networks:
+      - soc_network
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8001
+    volumes:
+      - ./unary/stats:/code/unary/stats
+      - ./statistics/src:/code/
+
+
+networks:
+  soc_network:
+    name: "soc_network"

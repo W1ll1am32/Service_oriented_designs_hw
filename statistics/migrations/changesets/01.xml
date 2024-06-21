@@ -1,0 +1,35 @@
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext"
+    xmlns:pro="http://www.liquibase.org/xml/ns/pro"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd
+        http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd
+        http://www.liquibase.org/xml/ns/pro http://www.liquibase.org/xml/ns/pro/liquibase-pro-latest.xsd">
+    
+    <changeSet author="u.goncharenko" id="create-stats-table">
+        <createTable tableName="statistics">
+            <column autoIncrement="true" name="id" type="INTEGER">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="statistics_pkey"/>
+            </column>
+            
+            <column name="post_id" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            
+            <column name="username" type="VARCHAR">
+                <constraints nullable="false"/>
+            </column>
+            
+            <column name="action" type="VARCHAR">
+                <constraints nullable="true"/>
+            </column>
+
+            <column name="author" type="VARCHAR">
+                <constraints nullable="true"/>
+            </column>
+        </createTable>
+    </changeSet>
+    
+</databaseChangeLog>

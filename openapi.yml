@@ -1,0 +1,193 @@
+openapi: 3.1.0
+info:
+  title: FastAPI
+  version: 0.1.0
+servers:
+  - url: https://localhost:8000
+paths:
+  /user/register:
+    post:
+      tags:
+        - user
+      summary: Register User
+      operationId: register_user_user_register_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InputModel'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /user/login:
+    post:
+      tags:
+        - user
+      summary: Login User
+      operationId: login_user_user_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InputModel'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /admin/users:
+    get:
+      tags:
+        - admin
+      summary: Get Users
+      operationId: get_users_admin_users_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /user/profile:
+    get:
+      tags:
+        - user
+      summary: Get User
+      operationId: get_user_user_profile_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+        - OAuth2PasswordBearer: []
+  /user/update:
+    put:
+      tags:
+        - user
+      summary: Update User
+      operationId: update_user_user_update_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateModel'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+        - OAuth2PasswordBearer: []
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    InputModel:
+      properties:
+        username:
+          type: string
+          title: Username
+        password:
+          type: string
+          title: Password
+      type: object
+      required:
+        - username
+        - password
+      title: InputModel
+    UpdateModel:
+      properties:
+        name:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Name
+        surname:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Surname
+        birthday:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Birthday
+        email:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Email
+        phone:
+          anyOf:
+            - type: string
+            - type: 'null'
+          title: Phone
+      type: object
+      title: UpdateModel
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+        - loc
+        - msg
+        - type
+      title: ValidationError
+  securitySchemes:
+    OAuth2PasswordBearer:
+      type: oauth2
+      flows:
+        password:
+          scopes: {}
+          tokenUrl: user/login
+tags:
+  - name: user
+    description: Operations with user profile
+  - name: admin
+    description: Admin operations
